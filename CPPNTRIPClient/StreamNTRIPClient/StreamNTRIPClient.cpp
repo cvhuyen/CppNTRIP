@@ -210,7 +210,7 @@ int main()
     RingBuffer bufferRead;
     uint8_t buffSend[CS_FRAME_SEND];
     char readNet[CS_MAX_BUFF], readKey[CS_MAX_BUFF];
-    uint16_t bytes_received;
+    uint16_t bytes_received, bytes_send;
     struct timeval timeout;
     fd_set reads;
 
@@ -239,14 +239,15 @@ int main()
             //printf("Received (%d bytes): %.*s",bytes_received, bytes_received, read);
             printf("\r\nReceived (%d bytes)", bytes_received);
 
-            RingBuffer_Write(&bufferRead,(uint8_t*) readNet, bytes_received);
+            if (RingBuffer_Write(&bufferRead, (uint8_t*)readNet, bytes_received) != RING_BUFFER_OK)         
+                printf("\r\nWrite RingBuffer failed.");
 
             while (RingBuffer_GetDataLength(&bufferRead) > CS_FRAME_SEND)
             {
                 // send data
-                RingBuffer_Read(&bufferRead, buffSend, CS_FRAME_SEND);
+                bytes_send=RingBuffer_Read(&bufferRead, buffSend, CS_FRAME_SEND);
                 //printf("\r\nSend data (%d bytes): %.*s",CS_FRAME_SEND, bufferSend);
-                printf("\r\nSend data (%d bytes)", CS_FRAME_SEND);
+                printf("\r\nSend data (%d bytes)", bytes_send);
             }
         }
 #if defined(_WIN32)
