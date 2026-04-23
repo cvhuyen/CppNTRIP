@@ -47,6 +47,7 @@
 #define CS_MOUNT_POINT "U-BLOX"
 #define CS_USERNAME "admin"
 #define CS_PASSWORD "admin"
+#define CS_MAX_BUFF 4096
 
 const int kBufferSize = 65536;
 const char kCasterAgent[] = "NTRIP NTRIPCaster";
@@ -119,16 +120,7 @@ bool SendNTRIPUser(SOCKET socket_peer,std::string user,std::string passwd)
         new char[kBufferSize], std::default_delete<char[]>());
     // Generate base64 encoding of username and password.
     Base64Encode(user_passwd, &user_passwd_base64);
-    // Generate request data format of ntrip.
-   // 'Build request message
-     //   Dim msg As String = "GET /" & NTRIPMountPoint & " HTTP/1.0" & vbCr & vbLf
-     //   msg += "User-Agent: NTRIP LefebureNTRIPClient/20131124" & vbCr & vbLf
-     //   msg += "Accept: */*" & vbCr & vbLf & "Connection: close" & vbCr & vbLf
-     //   If NTRIPUsername.Length > 0 Then
-     //   Dim auth As String = ToBase64(NTRIPUsername & ":" & NTRIPPassword)
-     //   msg += "Authorization: Basic " & auth & vbCr & vbLf 'This line can be removed if no authorization is needed
-     //  End If
-     //  msg += vbCr & vbLf
+    // Generate request data format of ntrip. Build request message     
     if (user.empty())
         ret = snprintf(buffer.get(), kBufferSize - 1,
             "GET /%s HTTP/1.1\r\n"
@@ -216,20 +208,19 @@ int main()
     }
     // init ringbufer read default 4096 bytes
     RingBuffer bufferRead;
-    uint8_t buffWrite[CS_FRAME_SEND];
+    uint8_t buffSend[CS_FRAME_SEND];
+    char readNet[CS_MAX_BUFF], readKey[CS_MAX_BUFF];
+    uint16_t bytes_received;
+    struct timeval timeout;
+    fd_set reads;
 
     RingBuffer_Init(&bufferRead);
-
-    while (1) {
-
-        fd_set reads;
+    while (1) {    
         FD_ZERO(&reads);
         FD_SET(socket_peer, &reads);
 #if !defined(_WIN32)
         FD_SET(0, &reads);
 #endif
-
-        struct timeval timeout;
         timeout.tv_sec = 0;
         timeout.tv_usec = 100000;
 
@@ -239,8 +230,8 @@ int main()
         }
 
         if (FD_ISSET(socket_peer, &reads)) {
-            char read[4096];
-            uint16_t bytes_received = recv(socket_peer, read, 4096, 0);
+           
+            bytes_received = recv(socket_peer, readNet, CS_MAX_BUFF, 0);
             if (bytes_received < 1) {
                 printf("Connection closed by peer.\n");
                 break;
@@ -248,13 +239,13 @@ int main()
             //printf("Received (%d bytes): %.*s",bytes_received, bytes_received, read);
             printf("\r\nReceived (%d bytes)", bytes_received);
 
-            RingBuffer_Write(&bufferRead,(uint8_t*) read, bytes_received);
+            RingBuffer_Write(&bufferRead,(uint8_t*) readNet, bytes_received);
 
             while (RingBuffer_GetDataLength(&bufferRead) > CS_FRAME_SEND)
             {
                 // send data
-                RingBuffer_Read(&bufferRead, buffWrite, CS_FRAME_SEND);
-                //printf("\r\nSend data (%d bytes): %.*s",CS_FRAME_SEND, bufferRead);
+                RingBuffer_Read(&bufferRead, buffSend, CS_FRAME_SEND);
+                //printf("\r\nSend data (%d bytes): %.*s",CS_FRAME_SEND, bufferSend);
                 printf("\r\nSend data (%d bytes)", CS_FRAME_SEND);
             }
         }
@@ -263,9 +254,8 @@ int main()
 #else
         if (FD_ISSET(0, &reads)) {
 #endif
-            char read[4096];
-            if (!fgets(read, 4096, stdin)) break;
-            if (read[0] == 'Q' || read[0] == 'q')
+            if (!fgets(readKey, CS_MAX_BUFF, stdin)) break;
+            if (readKey[0] == 'Q' || readKey[0] == 'q')
             {
                 printf("Exit program\n");
                 break;
