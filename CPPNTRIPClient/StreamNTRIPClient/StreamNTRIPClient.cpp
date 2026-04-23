@@ -38,10 +38,10 @@
 
 #include <stdio.h>
 #include <string.h>
-
-
 #include <iostream>
+#include "ringbuffer.h"
 
+#define CS_FRAME_SEND 128
 #define CS_SERVER_ADDRESS "192.168.1.114"
 #define CS_SERVER_PORT "2101"
 #define CS_MOUNT_POINT "U-BLOX"
@@ -214,6 +214,11 @@ int main()
         fprintf(stderr, "Send request UserName/Password to NTRIP caster failed!!!\r\n");
         return 1;
     }
+    // init ringbufer read default 4096 bytes
+    RingBuffer bufferRead;
+    uint8_t buffWrite[CS_FRAME_SEND];
+
+    RingBuffer_Init(&bufferRead);
 
     while (1) {
 
@@ -235,13 +240,23 @@ int main()
 
         if (FD_ISSET(socket_peer, &reads)) {
             char read[4096];
-            int bytes_received = recv(socket_peer, read, 4096, 0);
+            uint16_t bytes_received = recv(socket_peer, read, 4096, 0);
             if (bytes_received < 1) {
                 printf("Connection closed by peer.\n");
                 break;
             }
-            printf("Received (%d bytes): %.*s",
-                bytes_received, bytes_received, read);
+            //printf("Received (%d bytes): %.*s",bytes_received, bytes_received, read);
+            printf("\r\nReceived (%d bytes)", bytes_received);
+
+            RingBuffer_Write(&bufferRead,(uint8_t*) read, bytes_received);
+
+            while (RingBuffer_GetDataLength(&bufferRead) > CS_FRAME_SEND)
+            {
+                // send data
+                RingBuffer_Read(&bufferRead, buffWrite, CS_FRAME_SEND);
+                //printf("\r\nSend data (%d bytes): %.*s",CS_FRAME_SEND, bufferRead);
+                printf("\r\nSend data (%d bytes)", CS_FRAME_SEND);
+            }
         }
 #if defined(_WIN32)
         if (_kbhit()) {
