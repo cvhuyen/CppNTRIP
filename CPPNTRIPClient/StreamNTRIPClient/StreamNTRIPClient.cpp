@@ -39,6 +39,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <iostream>
+
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+
 #include "ringbuffer.h"
 
 #define CS_FRAME_SEND 128
@@ -55,6 +60,11 @@ const char kClientAgent[] = "NTRIP NTRIPClient";
 const char kServerAgent[] = "NTRIP NTRIPServer";
 
 std::string kBase64CodeTable ="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::mutex mtx;
+std::condition_variable cv;
+RingBuffer bufferRead;
+bool gExit=0;
 
 inline int base64_index(char in) {
     return kBase64CodeTable.find(in);
@@ -149,6 +159,22 @@ bool SendNTRIPUser(SOCKET socket_peer,std::string user,std::string passwd)
     }
     return true;
 }
+
+void SendFunction()
+{
+    uint8_t buffSend[CS_FRAME_SEND];
+    uint16_t bytes_send;
+    while(!gExit)
+    {
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [] { return ((RingBuffer_GetDataLength(&bufferRead)>= CS_FRAME_SEND) || (!gExit)); });
+        while (RingBuffer_GetDataLength(&bufferRead) >= CS_FRAME_SEND) 
+        {
+            bytes_send=RingBuffer_Read(&bufferRead, buffSend, CS_FRAME_SEND);            
+            printf("\r\nSend data (%d bytes)", bytes_send);
+        }        
+    }
+}
 int main()
 {
 #if defined(_WIN32)
@@ -207,7 +233,7 @@ int main()
         return 1;
     }
     // init ringbufer read default 4096 bytes
-    RingBuffer bufferRead;
+    
     uint8_t buffSend[CS_FRAME_SEND];
     char readNet[CS_MAX_BUFF], readKey[CS_MAX_BUFF];
     uint16_t bytes_received, bytes_send;
@@ -215,6 +241,9 @@ int main()
     fd_set reads;
 
     RingBuffer_Init(&bufferRead);
+    gExit = 0;
+    std::thread tSend(SendFunction);
+    
     while (1) {    
         FD_ZERO(&reads);
         FD_SET(socket_peer, &reads);
@@ -225,7 +254,7 @@ int main()
         timeout.tv_usec = 100000;
 
         if (select(socket_peer + 1, &reads, 0, 0, &timeout) < 0) {
-            fprintf(stderr, "select() failed. (%d)\n", GETSOCKETERRNO());
+            fprintf(stderr, "select() failed. (%d)\n", GETSOCKETERRNO());            
             return 1;
         }
 
@@ -233,22 +262,18 @@ int main()
            
             bytes_received = recv(socket_peer, readNet, CS_MAX_BUFF, 0);
             if (bytes_received < 1) {
-                printf("Connection closed by peer.\n");
+                printf("Connection closed by peer.\n");                
                 break;
             }
             //printf("Received (%d bytes): %.*s",bytes_received, bytes_received, read);
             printf("\r\nReceived (%d bytes)", bytes_received);
 
-            if (RingBuffer_Write(&bufferRead, (uint8_t*)readNet, bytes_received) != RING_BUFFER_OK)         
-                printf("\r\nWrite RingBuffer failed.");
-
-            while (RingBuffer_GetDataLength(&bufferRead) > CS_FRAME_SEND)
             {
-                // send data
-                bytes_send=RingBuffer_Read(&bufferRead, buffSend, CS_FRAME_SEND);
-                //printf("\r\nSend data (%d bytes): %.*s",CS_FRAME_SEND, bufferSend);
-                printf("\r\nSend data (%d bytes)", bytes_send);
-            }
+                std::lock_guard<std::mutex> lock(mtx);
+                if (RingBuffer_Write(&bufferRead, (uint8_t*)readNet, bytes_received) != RING_BUFFER_OK)
+                    printf("\r\nWrite RingBuffer failed.");
+            }          
+            cv.notify_one();               
         }
 #if defined(_WIN32)
         if (_kbhit()) {
@@ -258,16 +283,19 @@ int main()
             if (!fgets(readKey, CS_MAX_BUFF, stdin)) break;
             if (readKey[0] == 'Q' || readKey[0] == 'q')
             {
-                printf("Exit program\n");
+                printf("Exit program\n");               
                 break;
             }
             
         }
     } //end while(1)
 
+    gExit = 1;
+    tSend.join();
+
     printf("Closing socket...\n");
     CLOSESOCKET(socket_peer);
-
+    
 #if defined(_WIN32)
     WSACleanup();
 #endif
