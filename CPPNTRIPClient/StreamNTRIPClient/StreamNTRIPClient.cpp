@@ -1,5 +1,5 @@
 // StreamNTRIPClient.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
+// https://dzone.com/articles/parallel-tcpip-socket-server-with-multi-threading
 #if defined(_WIN32)
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
@@ -266,7 +266,7 @@ int main()
                 break;
             }
             //printf("Received (%d bytes): %.*s",bytes_received, bytes_received, read);
-            printf("\r\nReceived (%d bytes)", bytes_received);
+            printf("\r\nReceived (%d bytes)\t%d", bytes_received, bytes_received);
 
             {
                 std::lock_guard<std::mutex> lock(mtx);
