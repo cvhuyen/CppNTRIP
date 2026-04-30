@@ -1,0 +1,29 @@
+Client
+
+MQTTX
+https://mqttx.app/
+
+Server
+
+https://freemqtt.com/en
+
+Name: 01yZqekBPDBUg8RolyfAeILApMOZTV2RsG2sKVAsWzgZoVscnbKk3oY91MB0F67h
+Host: mqtt://broker.freemqtt.com
+Port (TCP)
+:1883
+Username
+:freemqtt
+Password
+:public
+
+/////////////////////////////////////////
+Port (SSL/TLS)
+:8883
+WebSocket URL (WS)
+:ws://broker.freemqtt.com:8083/mqtt
+WebSocket URL (WSS)
+:wss://broker.freemqtt.com:8084/mqtt
+/////////////////////////////////////////
+
+/////////////////////////////////////////////////DEVELOPER/////////////////////////
+https://github.com/eclipse-paho/paho.mqtt.c

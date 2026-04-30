@@ -45,6 +45,18 @@
 #include <condition_variable>
 
 #include "ringbuffer.h"
+/// MQTT
+#include <cassert>
+#include "MQTTClient.h"
+#define CS_MQTT_URL "mqtt://broker.freemqtt.com:1883"
+#define CS_MQTT_USER_ID "HOME_HN"
+#define CS_MQTT_USER_NAME "freemqtt"
+#define CS_MQTT_PASSWORD "public"
+#define CS_MQTT_TOPIC_RTCM "RTCM"
+#define CS_MQTT_TOPIC_RTCM_SYS "RTCM\SYS"
+MQTTClient mqttClient;
+char mqttTopic[255];
+
 
 #define CS_FRAME_SEND 128
 #define CS_SERVER_ADDRESS "192.168.1.114"
@@ -159,7 +171,120 @@ bool SendNTRIPUser(SOCKET socket_peer,std::string user,std::string passwd)
     }
     return true;
 }
+void MQTT_Clear(MQTTClient c, const char* clientID,const char* clientUser, const char* clientPass,int nVesion= MQTTVERSION_DEFAULT)
+{
+    int rc;
+    printf("Stopping\n");
+    rc = MQTTClient_unsubscribe(c, mqttTopic);
+    assert("Unsubscribe successful", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+    rc = MQTTClient_disconnect(c, 0);
+    assert("Disconnect successful", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
 
+    // Just to make sure we can connect again 
+    MQTTClient_connectOptions opts = MQTTClient_connectOptions_initializer;
+    MQTTClient_willOptions wopts = MQTTClient_willOptions_initializer;
+    opts.keepAliveInterval = 20;
+    opts.cleansession = 1;
+    opts.username = clientUser;
+    opts.password = clientPass;
+    opts.MQTTVersion = nVesion;
+    char pbuff[255];
+    sprintf_s(pbuff,255, "%s disconected", clientID);
+    opts.will = &wopts;
+    opts.will->message = pbuff;
+    opts.will->qos = 1;
+    opts.will->retained = 0;
+    opts.will->topicName = CS_MQTT_TOPIC_RTCM_SYS;
+    opts.will = NULL;
+
+    rc = MQTTClient_connect(c, &opts);
+    assert("Connect successful", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+    rc = MQTTClient_disconnect(c, 0);
+    assert("Disconnect successful", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+
+    MQTTClient_destroy(&c);
+}
+
+MQTTClient MQTT_Connec(const char* serverURI,const char* clientID,const char* clientUser,const char* clientPass,const int nVesion= MQTTVERSION_DEFAULT)
+{
+    int subsqos = 2;
+    MQTTClient c;
+    MQTTClient_connectOptions opts = MQTTClient_connectOptions_initializer;
+    MQTTClient_willOptions wopts = MQTTClient_willOptions_initializer;
+    int rc = 0;
+    
+
+    rc = MQTTClient_create(&c, serverURI, clientID,MQTTCLIENT_PERSISTENCE_DEFAULT, NULL);
+    assert("good rc from create", rc == MQTTCLIENT_SUCCESS, "rc was %d\n", rc);
+    if (rc != MQTTCLIENT_SUCCESS)
+    {
+        MQTTClient_destroy(&c);
+        goto exit;
+    }
+    
+    opts.keepAliveInterval = 20;
+    opts.cleansession = 1;
+    opts.username = clientUser;
+    opts.password = clientPass;
+    opts.MQTTVersion = nVesion;
+    char pbuff[255];
+    sprintf_s(pbuff,255, "%s disconected", clientID);
+    opts.will = &wopts;
+    opts.will->message = pbuff;
+    opts.will->qos = 1;
+    opts.will->retained = 0;
+    opts.will->topicName = CS_MQTT_TOPIC_RTCM_SYS;
+    opts.will = NULL;
+
+    printf("Connecting to MQTT broker");
+    rc = MQTTClient_connect(c, &opts);
+    assert("Good rc from connect", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+    if (rc != MQTTCLIENT_SUCCESS)
+        goto exit;
+
+    
+    sprintf_s(mqttTopic, 255, "%s/%s", CS_MQTT_TOPIC_RTCM,clientID);
+    rc = MQTTClient_subscribe(c, mqttTopic, subsqos);
+    assert("Good rc from subscribe", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+    if (rc != MQTTCLIENT_SUCCESS)
+    {
+        printf("Stopping\n");
+        //rc = MQTTClient_unsubscribe(c, test_topic);
+        //assert("Unsubscribe successful", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+        rc = MQTTClient_disconnect(c, 0);
+        assert("Disconnect successful", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+
+        // Just to make sure we can connect again 
+        rc = MQTTClient_connect(c, &opts);
+        assert("Connect successful", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+        rc = MQTTClient_disconnect(c, 0);
+        assert("Disconnect successful", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+
+        MQTTClient_destroy(&c);
+        return NULL;
+    }
+    else
+        return c;    
+exit:
+    return NULL;
+}
+void MQTT_send(MQTTClient c, int qos, const char* topicName,void* data,const int len)
+{
+    MQTTClient_deliveryToken dt;
+    MQTTClient_message pubmsg = MQTTClient_message_initializer;       
+    int rc;
+    pubmsg.payload = data;
+    pubmsg.payloadlen = len;
+    pubmsg.qos = qos;
+    pubmsg.retained = 0;
+    rc = MQTTClient_publishMessage(c, topicName, &pubmsg, &dt);
+    assert("Good rc from publish", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+    if (qos > 0)
+    {
+        rc = MQTTClient_waitForCompletion(c, dt, 5000L);
+        assert("Good rc from waitforCompletion", rc == MQTTCLIENT_SUCCESS, "rc was %d", rc);
+    }
+}
 void SendFunction()
 {
     uint8_t buffSend[CS_FRAME_SEND];
@@ -171,7 +296,10 @@ void SendFunction()
         while (RingBuffer_GetDataLength(&bufferRead) >= CS_FRAME_SEND) 
         {
             bytes_send=RingBuffer_Read(&bufferRead, buffSend, CS_FRAME_SEND);            
+            
             printf("\r\nSend data (%d bytes)", bytes_send);
+            if (mqttClient && (bytes_send > 0))
+               MQTT_send(mqttClient, 0, mqttTopic, buffSend, bytes_send);
         }        
     }
 }
@@ -243,7 +371,13 @@ int main()
     RingBuffer_Init(&bufferRead);
     gExit = 0;
     std::thread tSend(SendFunction);
-    
+    // connect to MQTT
+    mqttClient = MQTT_Connec(CS_MQTT_URL, CS_MQTT_USER_ID, CS_MQTT_USER_NAME, CS_MQTT_PASSWORD);
+    if (mqttClient == NULL)
+        printf("Failed to initialize MQTT Client\n");
+    else
+        printf("Connected to MQTT Broker.\n");
+   
     while (1) {    
         FD_ZERO(&reads);
         FD_SET(socket_peer, &reads);
@@ -299,7 +433,8 @@ int main()
 #if defined(_WIN32)
     WSACleanup();
 #endif
-
+    if (mqttClient != NULL)
+        MQTT_Clear(mqttClient, CS_MQTT_USER_ID, CS_MQTT_USER_NAME, CS_MQTT_PASSWORD);
     printf("Finished.\n");
     return 0;
 }

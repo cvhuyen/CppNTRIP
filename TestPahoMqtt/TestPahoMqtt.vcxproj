@@ -21,8 +21,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{8eec5bb7-fd8a-4f3f-bd57-c5f2ef104e5b}</ProjectGuid>
-    <RootNamespace>StreamNTRIPClient</RootNamespace>
+    <ProjectGuid>{78eec560-e49c-4481-a056-77ae02fd97d7}</ProjectGuid>
+    <RootNamespace>TestPahoMqtt</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -75,7 +75,6 @@
     <LibraryPath>D:\NeoM8p\CppNTRIP\PahoMqtt\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>D:\NeoM8p\CppNTRIP\PahoMqtt\inc;$(IncludePath)</IncludePath>
     <LibraryPath>D:\NeoM8p\CppNTRIP\PahoMqtt\lib\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -133,11 +132,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="ringbuffer.cpp" />
-    <ClCompile Include="StreamNTRIPClient.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="ringbuffer.h" />
+    <ClCompile Include="TestPahoMqtt.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
